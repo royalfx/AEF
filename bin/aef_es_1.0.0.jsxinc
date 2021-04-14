@@ -1,0 +1,1875 @@
+
+function as_copyHTMLBody(sourceFile, targetFile) {
+    var htmlSource = as_fileRead(sourceFile);
+    var htmlTarget = as_fileRead(targetFile);
+    var stringOld = htmlTarget.substring(htmlTarget.indexOf("<body>"), htmlTarget.indexOf("</body>"));
+    var stringNew = htmlSource.substring(htmlSource.indexOf("<body>"), htmlSource.indexOf("</body>"));
+    htmlTarget = htmlTarget.replace(stringOld, stringNew);
+    as_fileWrite(targetFile, htmlTarget);
+}
+
+function as_createDataFile(filesList, outFile, fileExtension) {
+    if (fileExtension === undefined) {
+        fileExtension = "";
+    }
+    var key = as_getFileName(outFile);
+    var jsonString;
+    if (filesList instanceof Folder) {
+        filesList = filesList.getFiles("*" + fileExtension);
+    }
+   
+    var data = {};
+    for (var f = 0, file, binString; f < filesList.length; f++) {
+		file = filesList[f];
+		if (!file || !file.exists) {
+			alert("Error. File " + JSON.stringify(file.fullName) + " is missing.");
+			continue;
+		}
+        binString = as_fileToBinaryString(file);
+        if (binString !== null) {
+            data[file.displayName] = binString;
+        }
+    }
+    var jsonString = "var " + key + " = " + JSON.stringify(data, undefined, "\t") + ";";
+    as_fileWrite(outFile, jsonString, false);
+}
+
+function as_createUIDataFile(fileCSV, fileJS) {
+    var key = as_getFileName(fileJS);
+    var stringJSON = "var " + key + " = " + JSON.stringify(as_parseCSV(fileCSV), undefined, "\t") + ";";
+    as_fileWrite(fileJS, stringJSON, false);
+}
+
+function as_fileCollectInclude(dirsAndFiles, rootDir, intoSubfolders, filterFileExt) {
+	var collector = [];
+    for (var i = 0, item; i < dirsAndFiles.length; i++) {
+		item = dirsAndFiles[i];
+		if (item instanceof File) {
+			handleFile(item);
+		} else if (item instanceof Folder) {
+			as_loopFiles(item, intoSubfolders, handleFile, [collector], filterFileExt);
+		} else {
+		}
+	}
+	function handleFile(file, collector) {
+		var filePath = as_convertFilePath(file.fullName, rootDir, true);
+		collector.push("#include \"" + filePath + "\";");
+	}
+	return collector.join("\n");
+}
+
+function as_fileCollectIncludeJS(dirsAndFiles, rootDir, intoSubfolders, filterFileExt) {
+	var collector = [];
+	for (var i = 0, item; i < dirsAndFiles.length; i++) {
+		item = dirsAndFiles[i];
+		if (item instanceof File) {
+			handleFile(item);
+		} else if (item instanceof Folder) {
+			as_loopFiles(item, intoSubfolders, handleFile, [collector], filterFileExt);
+		} else {
+		}
+	}
+	function handleFile(file, collector) {
+		var filePath = as_convertFilePathJS(file.fullName, rootDir, true);
+		collector.push("document.write(\'<script type=\"text/javascript\" src=\"" + filePath + "\"></script>\');");
+	}
+	return collector.join("\n");
+}
+
+function as_insertRemainingFiles(rootDir, config, mainFile, outFile) {
+   
+    var fileText = as_fileRead(mainFile);
+   
+    for (var i = 0; i < config.includeLater.length; i++) {
+        var filePath = config.includeLater[i];
+        var key = "later('" + filePath + "');";
+       
+        if (filePath.indexOf("..") >= 0) {
+            while (filePath.indexOf("../") >= 0) {
+                filePath = filePath.replace("../", "");
+            }
+            filePath = rootDir.fullName + "/" + filePath;
+        }
+       
+        fileText = fileText.replace(key, "\n#include " + JSON.stringify(filePath) + ";\n");
+    }
+   
+    as_fileWrite(outFile, fileText, false);
+}
+
+function as_makeSingleFile(rootDir, config, mainFile, outFile) {
+    var collectedFiles = {};
+   
+	var text = recursiveCollectFiles(mainFile, config, collectedFiles);
+	while (text.match(/\n\n/gi) != null) {
+		text = text.replace(/\n\n/gi, "\n");
+	}
+   
+    as_fileWrite(outFile, text, false);
+    
+	function recursiveCollectFiles(file, config, collectedFiles) {
+        if (collectedFiles[file.fullName] != null) {
+            return "";
+        }
+        collectedFiles[file.fullName] = 1;
+       
+        for (var i = 0; i < config.includeLater.length; i++) {
+            if (config.includeLater[i].indexOf(file.displayName) >= 0) {
+                return "later('" + config.includeLater[i] + "');";
+            }
+        }
+       
+        var fileText = as_fileRead(file);
+       
+        if (as_arrayCheckValue(file.displayName, config.skipFiles) >= 0) {
+            return "";
+        }
+       
+        var linesArray = fileText.split("\n");
+        for (var l = 0, line; l < linesArray.length; l++) {
+            line = linesArray[l];
+			for (var i = 0, tag; i < config.skipLines.length; i++) {
+				tag = config.skipLines[i];
+				if (line.indexOf(tag) >= 0) {
+                    linesArray.splice(l, 1);
+                    l--;
+                    continue;
+                }
+			}
+            for (var i = 0, inx, tag; i < config.includeLines.length; i++) {
+                tag = config.includeLines[i];
+				inx = line.indexOf(tag);
+				if (inx >= 0) {
+                    linesArray[l] = line.replace(
+				}
+			}
+		}
+       
+        fileText = linesArray.join("\n");
+       
+        fileText = fileText.replace(/\/\*(?:(?!\*\/).|[\n\r])*\*\//gm, "");
+       
+        linesArray = fileText.split("\n");
+       
+        var lines = [],
+            path,
+            filePath;
+       
+        for (var l = 0, line, lineWithoutTabs; l < linesArray.length; l++) {
+            line = linesArray[l];
+            lineWithoutTabs = line.replace(new RegExp("\t|\s", "g"), "");
+           
+            if (lineWithoutTabs.indexOf("#includepath ") == 0) {
+                path = line.substring(line.indexOf("\"") + 1, line.lastIndexOf("\""));
+           
+            } else if (lineWithoutTabs.indexOf("#include ") == 0) {
+               
+                if (line.indexOf("..") >= 0) {
+                    filePath = line.substring(line.indexOf("\"") + 1, line.lastIndexOf("\""));
+                    while (filePath.indexOf("../") >= 0) {
+                        filePath = filePath.replace("../", "");
+                    }
+                    filePath = rootDir.fullName + "/" + filePath;
+               
+                } else if (line.indexOf("/") >= 0) {
+                    filePath = (line.substring(line.indexOf("\"") + 1, line.lastIndexOf("\"")));
+               
+                } else {
+                    filePath = (path + "/" + line.substring(line.indexOf("\"") + 1, line.lastIndexOf("\"")));
+                    while (filePath.indexOf("../") >= 0) {
+                        filePath = filePath.replace("../", "");
+                    }
+                    filePath = rootDir.fullName + "/" + filePath;
+                }
+				lines.push(recursiveCollectFiles(File(filePath), config, collectedFiles));
+            } else if (lineWithoutTabs.indexOf(
+                lines.push(line);
+            }
+        }
+        return lines.join("\n");
+    }
+}
+
+
+function as_makeSingleFileJS(rootDir, config, includeFile, outFile) {
+    var collectedFiles = {};
+	var text = "'use strict'";
+   
+    var inclText = as_fileRead(includeFile);
+    var inclLines = inclText.split("\n");
+    for (var j = 0; j < inclLines.length; j++) {
+        inclLine = inclLines[j];
+        if (inclLine.indexOf("src=") >= 0) {
+           
+            var path = inclLine.replace("document.write('<script type=\"text/javascript\" src=\"", "");
+            path = path.replace("\"></script>');", "");
+           
+			collectFile(File(as_convertFilePath(path, rootDir, true)), config, collectedFiles);
+        }
+    }
+   
+    text = text.replace(/\n\s*\n\s*\n/g, "\n\n");
+   
+    as_fileWrite(outFile, text, false);
+    
+	function collectFile(file, config, collectedFiles) {
+       
+        if (!file.exists) {
+            return;
+        }
+       
+        if (collectedFiles[file.fullName] != null) {
+            return;
+        }
+        collectedFiles[file.fullName] = 1;
+       
+        if (as_arrayCheckValue(file.displayName, config.skipFiles) >= 0) {
+            return;
+        }
+       
+        var fileText = as_fileRead(file);
+       
+        var linesArray = fileText.split("\n");
+		for (var l = 0, line; l < linesArray.length; l++) {
+			line = linesArray[l];
+			for (var i = 0, tag; i < config.skipLines.length; i++) {
+				tag = config.skipLines[i];
+				if (line.indexOf(tag) >= 0) {
+					linesArray.splice(l, 1);
+					l--;
+					continue;
+				}
+			}
+           
+            for (var i = 0, inx, tag; i < config.includeLines.length; i++) {
+                tag = config.includeLines[i];
+                inx = line.indexOf(tag);
+                if (inx >= 0) {
+                    linesArray[l] = line.replace(
+                }
+            }
+		}
+       
+        fileText = linesArray.join("\n");
+       
+        fileText = fileText.replace(/\/\*(?:(?!\*\/).|[\n\r])*\*\//gm, "");
+       
+        linesArray = fileText.split("\n");
+        for (var l = 0, line, lineTabsClear; l < linesArray.length; l++) {
+            line = linesArray[l];
+            lineTabsClear = line.replace(new RegExp("\t|\s", "g"), "");
+			if ((lineTabsClear.indexOf(
+                linesArray.splice(l, 1);
+                l--;
+                continue;
+            }
+        }
+        text = text + "\n" + linesArray.join("\n");
+    }
+}
+
+
+function as_syncDirectories(sourceDir, targetDir) {
+	as_loopDirectories(sourceDir, true, syncDir, [], undefined);
+	as_loopDirectories(targetDir, true, removeIfUnnededDir, [], undefined);
+	function syncDir(dir) {
+		var newDir = Folder(dir.fullName.replace(sourceDir.parent.fullName, targetDir.parent.fullName));
+		if (!newDir.exists) {
+			newDir.create();
+		}
+		as_loopFiles(dir, true, syncFile, [], undefined, undefined);
+	}
+	function syncFile(file) {
+		var newFile = File(file.fullName.replace(sourceDir.parent.fullName, targetDir.parent.fullName));
+		file.copy(newFile);
+	}
+	function removeIfUnnededDir(dir) {
+		var srcDir = Folder(dir.fullName.replace(targetDir.parent.fullName, sourceDir.parent.fullName));
+		if (!srcDir.exists) {
+			dir.remove();
+		} else {
+			as_loopFiles(dir, true, removeIfUnnededFile, [], undefined, undefined);
+		}
+	}
+	function removeIfUnnededFile(file) {
+		var srcFile = File(file.fullName.replace(targetDir.parent.fullName, sourceDir.parent.fullName));
+		if (!srcFile.exists) {
+			file.remove();
+		}
+	}
+}
+
+function Observer(notifyMethod, notifyContext) {
+	this.setNotifyMethod(notifyMethod);
+	this.setNotifyContext(notifyContext);
+};
+Observer.prototype.setNotifyMethod = function (notifyMethod) {
+	this.notify = notifyMethod;
+};
+Observer.prototype.setNotifyContext = function (notifyContext) {
+	this.context = notifyContext;
+};
+Observer.prototype.getNotifyMethod = function () {
+	return this.notify;
+};
+Observer.prototype.getNotifyContext = function () {
+	return this.context;
+};
+Observer.prototype.notifyObserver = function (notification) {
+	this.getNotifyMethod().call(this.getNotifyContext(), notification);
+};
+Observer.prototype.compareNotifyContext = function (object) {
+	return object === this.context;
+};
+Observer.prototype.notify = null;
+Observer.prototype.context = null;
+function Notification(name, body, type) {
+	this.name = name;
+	this.body = body;
+	this.type = type;
+};
+Notification.prototype.getName = function () {
+	return this.name;
+};
+Notification.prototype.setBody = function (body) {
+	this.body = body;
+};
+Notification.prototype.getBody = function () {
+	return this.body
+};
+Notification.prototype.setType = function (type) {
+	this.type = type;
+};
+Notification.prototype.getType = function () {
+	return this.type;
+};
+Notification.prototype.toString = function () {
+	var msg = "Notification Name: " + this.getName();
+	msg += "\nBody:" + ((this.body == null) ? "null" : this.body.toString());
+	msg += "\nType:" + ((this.type == null) ? "null" : this.type);
+	return msg;
+};
+Notification.prototype.name = null;
+Notification.prototype.type = null;
+Notification.prototype.body = null;
+function Notifier() { };
+Notifier.prototype.sendNotification = function (notificationName, body, type) {
+	var facade = this.getFacade();
+	if (facade) {
+		facade.sendNotification(notificationName, body, type);
+	}
+};
+Notifier.prototype.facade;
+Notifier.prototype.initializeNotifier = function (key) {
+	this.multitonKey = String(key);
+	this.facade = this.getFacade();
+};
+Notifier.prototype.getFacade = function () {
+	if (this.multitonKey == null) {
+		throw new Error(Notifier.MULTITON_MSG);
+	};
+	return Facade.getInstance(this.multitonKey);
+};
+Notifier.prototype.multitonKey = null;
+Notifier.MULTITON_MSG = "multitonKey for this Notifier not yet initialized!";
+function SimpleCommand() { };
+SimpleCommand.prototype = new Notifier;
+SimpleCommand.prototype.constructor = SimpleCommand;
+SimpleCommand.prototype.execute = function (notification) { };
+function MacroCommand() {
+	this.subCommands = [];
+	this.initializeMacroCommand();
+};
+MacroCommand.prototype = new Notifier;
+MacroCommand.prototype.constructor = MacroCommand;
+MacroCommand.prototype.subCommands = null;
+MacroCommand.prototype.initializeMacroCommand = function () { }
+MacroCommand.prototype.addSubCommand = function (commandClassRef) {
+	this.subCommands.push(commandClassRef);
+};
+MacroCommand.prototype.execute = function (note) {
+	while (this.subCommands.length > 0) {
+		var ref = this.subCommands.shift();
+		var cmd = new ref;
+		cmd.initializeNotifier(this.multitonKey);
+		cmd.execute(note);
+	}
+};
+function Mediator(mediatorName, viewComponent) {
+	this.mediatorName = mediatorName || this.constructor.NAME;
+	this.viewComponent = viewComponent;
+};
+Mediator.NAME = "Mediator";
+Mediator.prototype = new Notifier;
+Mediator.prototype.constructor = Mediator;
+Mediator.prototype.getMediatorName = function () {
+	return this.mediatorName;
+};
+Mediator.prototype.setViewComponent = function (viewComponent) {
+	this.viewComponent = viewComponent;
+};
+Mediator.prototype.getViewComponent = function () {
+	return this.viewComponent;
+};
+Mediator.prototype.listNotificationInterests = function () {
+	return [];
+};
+Mediator.prototype.handleNotification = function (notification) {
+	return;
+};
+Mediator.prototype.onRegister = function () {
+	return;
+};
+Mediator.prototype.onRemove = function () {
+	return;
+};
+Mediator.prototype.mediatorName = null;
+Mediator.prototype.viewComponent = null;
+function Proxy(proxyName, data) {
+	this.proxyName = proxyName || this.constructor.NAME;
+	if (data != null) {
+		this.setData(data);
+	}
+};
+Proxy.NAME = "Proxy";
+Proxy.prototype = new Notifier;
+Proxy.prototype.constructor = Proxy;
+Proxy.prototype.getProxyName = function () {
+	return this.proxyName;
+};
+Proxy.prototype.setData = function (data) {
+	this.data = data;
+};
+Proxy.prototype.getData = function () {
+	return this.data;
+};
+Proxy.prototype.onRegister = function () {
+	return;
+};
+Proxy.prototype.onRemove = function () {
+	return;
+};
+Proxy.prototype.proxyName = null;
+Proxy.prototype.data = null;
+function Facade(key) {
+	if (Facade.instanceMap[key] != null) {
+		throw new Error(Facade.MULTITON_MSG);
+	}
+	this.initializeNotifier(key);
+	Facade.instanceMap[key] = this;
+	this.initializeFacade();
+};
+Facade.prototype.initializeFacade = function () {
+	this.initializeModel();
+	this.initializeController();
+	this.initializeView();
+};
+Facade.getInstance = function (key) {
+	if (null == key)
+		return null;
+	if (Facade.instanceMap[key] == null) {
+		Facade.instanceMap[key] = new Facade(key);
+	}
+	return Facade.instanceMap[key];
+};
+Facade.prototype.initializeController = function () {
+	if (this.controller != null)
+		return;
+	this.controller = Controller.getInstance(this.multitonKey);
+};
+Facade.prototype.initializeModel = function () {
+	if (this.model != null)
+		return;
+	this.model = Model.getInstance(this.multitonKey);
+};
+Facade.prototype.initializeView = function () {
+	if (this.view != null)
+		return;
+	this.view = View.getInstance(this.multitonKey);
+};
+Facade.prototype.registerCommand = function (notificationName, commandClassRef) {
+	this.controller.registerCommand(notificationName, commandClassRef);
+};
+Facade.prototype.removeCommand = function (notificationName) {
+	this.controller.removeCommand(notificationName);
+};
+Facade.prototype.hasCommand = function (notificationName) {
+	return this.controller.hasCommand(notificationName);
+};
+Facade.prototype.registerProxy = function (proxy) {
+	this.model.registerProxy(proxy);
+};
+Facade.prototype.retrieveProxy = function (proxyName) {
+	return this.model.retrieveProxy(proxyName);
+};
+Facade.prototype.removeProxy = function (proxyName) {
+	var proxy = null;
+	if (this.model != null) {
+		proxy = this.model.removeProxy(proxyName);
+	}
+	return proxy;
+};
+Facade.prototype.hasProxy = function (proxyName) {
+	return this.model.hasProxy(proxyName);
+};
+Facade.prototype.registerMediator = function (mediator) {
+	if (this.view != null) {
+		this.view.registerMediator(mediator);
+	}
+};
+Facade.prototype.retrieveMediator = function (mediatorName) {
+	return this.view.retrieveMediator(mediatorName);
+};
+Facade.prototype.removeMediator = function (mediatorName) {
+	var mediator = null;
+	if (this.view != null) {
+		mediator = this.view.removeMediator(mediatorName);
+	}
+	return mediator;
+};
+Facade.prototype.hasMediator = function (mediatorName) {
+	return this.view.hasMediator(mediatorName);
+};
+Facade.prototype.sendNotification = function (notificationName, body, type) {
+	this.notifyObservers(new Notification(notificationName, body, type));
+};
+Facade.prototype.notifyObservers = function (notification) {
+	if (this.view != null) {
+		this.view.notifyObservers(notification);
+	}
+};
+Facade.prototype.initializeNotifier = function (key) {
+	this.multitonKey = key;
+};
+Facade.hasCore = function (key) {
+	return Facade.instanceMap[key] != null;
+};
+Facade.removeCore = function (key) {
+	if (Facade.instanceMap[key] == null)
+		return;
+	Model.removeModel(key);
+	View.removeView(key);
+	Controller.removeController(key);
+	delete Facade.instanceMap[key];
+};
+Facade.prototype.controller = null;
+Facade.prototype.model = null;
+Facade.prototype.view = null;
+Facade.prototype.multitonKey = null;
+Facade.instanceMap = [];
+Facade.MULTITON_MSG = "Facade instance for this Multiton key already constructed!";
+function View(key) {
+	if (View.instanceMap[key] != null) {
+		throw new Error(View.MULTITON_MSG);
+	};
+	this.multitonKey = key;
+	View.instanceMap[this.multitonKey] = this;
+	this.mediatorMap = [];
+	this.observerMap = [];
+	this.initializeView();
+};
+View.prototype.initializeView = function () {
+	return;
+};
+View.getInstance = function (key) {
+	if (null == key)
+		return null;
+	if (View.instanceMap[key] == null) {
+		View.instanceMap[key] = new View(key);
+	};
+	return View.instanceMap[key];
+};
+View.prototype.registerObserver = function (notificationName, observer) {
+	if (this.observerMap[notificationName] != null) {
+		this.observerMap[notificationName].push(observer);
+	} else {
+		this.observerMap[notificationName] = [observer];
+	}
+};
+View.prototype.notifyObservers = function (notification) {
+	if (this.observerMap[notification.getName()] != null) {
+		var observers_ref = this.observerMap[notification.getName()],
+			observers = [],
+			observer
+		for (var i = 0; i < observers_ref.length; i++) {
+			observer = observers_ref[i];
+			observers.push(observer);
+		}
+		for (var i = 0; i < observers.length; i++) {
+			observer = observers[i];
+			observer.notifyObserver(notification);
+		}
+	}
+};
+View.prototype.removeObserver = function (notificationName, notifyContext) {
+	var observers = this.observerMap[notificationName];
+	for (var i = 0; i < observers.length; i++) {
+		if (observers[i].compareNotifyContext(notifyContext) == true) {
+			observers.splice(i, 1);
+			break;
+		}
+	}
+	if (observers.length == 0) {
+		delete this.observerMap[notificationName];
+	}
+};
+View.prototype.registerMediator = function (mediator) {
+	if (this.mediatorMap[mediator.getMediatorName()] != null) {
+		return;
+	}
+	mediator.initializeNotifier(this.multitonKey);
+	this.mediatorMap[mediator.getMediatorName()] = mediator;
+	var interests = mediator.listNotificationInterests();
+	if (interests.length > 0) {
+		var observer = new Observer(mediator.handleNotification, mediator);
+		for (var i = 0; i < interests.length; i++) {
+			this.registerObserver(interests[i], observer);
+		}
+	}
+	mediator.onRegister();
+}
+View.prototype.retrieveMediator = function (mediatorName) {
+	return this.mediatorMap[mediatorName];
+};
+View.prototype.removeMediator = function (mediatorName) {
+	var mediator = this.mediatorMap[mediatorName];
+	if (mediator) {
+		var interests = mediator.listNotificationInterests();
+		for (var i = 0; i < interests.length; i++) {
+			this.removeObserver(interests[i], mediator);
+		}
+		delete this.mediatorMap[mediatorName];
+		mediator.onRemove();
+	}
+	return mediator;
+};
+View.prototype.hasMediator = function (mediatorName) {
+	return this.mediatorMap[mediatorName] != null;
+};
+View.removeView = function (key) {
+	delete View.instanceMap[key];
+};
+View.prototype.mediatorMap = null;
+View.prototype.observerMap = null;
+View.instanceMap = [];
+View.prototype.multitonKey = null;
+View.MULTITON_MSG = "View instance for this Multiton key already constructed!";
+function Model(key) {
+	if (Model.instanceMap[key]) {
+		throw new Error(Model.MULTITON_MSG);
+	}
+	this.multitonKey = key;
+	Model.instanceMap[key] = this;
+	this.proxyMap = [];
+	this.initializeModel();
+};
+Model.prototype.initializeModel = function () { };
+Model.getInstance = function (key) {
+	if (null == key)
+		return null;
+	if (Model.instanceMap[key] == null) {
+		Model.instanceMap[key] = new Model(key);
+	}
+	return Model.instanceMap[key];
+};
+Model.prototype.registerProxy = function (proxy) {
+	proxy.initializeNotifier(this.multitonKey);
+	this.proxyMap[proxy.getProxyName()] = proxy;
+	proxy.onRegister();
+};
+Model.prototype.retrieveProxy = function (proxyName) {
+	return this.proxyMap[proxyName];
+};
+Model.prototype.hasProxy = function (proxyName) {
+	return this.proxyMap[proxyName] != null;
+};
+Model.prototype.removeProxy = function (proxyName) {
+	var proxy = this.proxyMap[proxyName];
+	if (proxy) {
+		this.proxyMap[proxyName] = null;
+		proxy.onRemove();
+	}
+	return proxy;
+};
+Model.removeModel = function (key) {
+	delete Model.instanceMap[key];
+};
+Model.prototype.proxyMap = null;
+Model.instanceMap = [];
+Model.prototype.multitonKey;
+Model.MULTITON_MSG = "Model instance for this Multiton key already constructed!";
+function Controller(key) {
+	if (Controller.instanceMap[key] != null) {
+		throw new Error(Controller.MULTITON_MSG);
+	}
+	this.multitonKey = key;
+	Controller.instanceMap[this.multitonKey] = this;
+	this.commandMap = new Array();
+	this.initializeController();
+}
+Controller.prototype.initializeController = function () {
+	this.view = View.getInstance(this.multitonKey);
+};
+Controller.getInstance = function (key) {
+	if (null == key)
+		return null;
+	if (null == this.instanceMap[key]) {
+		this.instanceMap[key] = new this(key);
+	}
+	return this.instanceMap[key];
+};
+Controller.prototype.executeCommand = function (note) {
+	var commandClassRef = this.commandMap[note.getName()];
+	if (commandClassRef == null)
+		return;
+	var commandInstance = new commandClassRef();
+	commandInstance.initializeNotifier(this.multitonKey);
+	commandInstance.execute(note);
+};
+Controller.prototype.registerCommand = function (notificationName, commandClassRef) {
+	if (this.commandMap[notificationName] == null) {
+		this.view.registerObserver(notificationName, new Observer(this.executeCommand, this));
+	}
+	this.commandMap[notificationName] = commandClassRef;
+};
+Controller.prototype.hasCommand = function (notificationName) {
+	return this.commandMap[notificationName] != null;
+};
+Controller.prototype.removeCommand = function (notificationName) {
+	if (this.hasCommand(notificationName)) {
+		this.view.removeObserver(notificationName, this);
+		this.commandMap[notificationName] = null;
+	}
+};
+Controller.removeController = function (key) {
+	delete this.instanceMap[key];
+};
+Controller.prototype.view = null;
+Controller.prototype.commandMap = null;
+Controller.prototype.multitonKey = null;
+Controller.instanceMap = [];
+Controller.MULTITON_MSG = "controller key for this Multiton key already constructed";
+
+function ErrorName() {
+}
+ErrorName.EVAL_ERROR = "EVAL_ERROR";
+ErrorName.INTERNAL_ERROR = "INTERNAL_ERROR";
+ErrorName.RANGE_ERROR = "RANGE_ERROR";
+ErrorName.REFERENCE_ERROR = "REFERENCE_ERROR";
+ErrorName.SYNTAX_ERROR = "SYNTAX_ERROR";
+ErrorName.TYPE_ERROR = "TYPE_ERROR";
+ErrorName.URI_ERROR = "URI_ERROR";
+ErrorName.ATTEMPT_MODIFY_LOCKED_DATA = "ATTEMPT_MODIFY_LOCKED_DATA";
+ErrorName.UNCLOSED_UNDO_GROUP = "UNCLOSED_UNDO_GROUP";
+ErrorName.NO_UNDO_GROUP = "NO_UNDO_GROUP";
+ErrorName.FILE_MISSING = "FILE_MISSING";
+ErrorName.FOLDER_MISSING = "FOLDER_MISSING";
+ErrorName.FAILED_CREATE_FILE = "FAILED_CREATE_FILE";
+ErrorName.FAILED_CREATE_FOLDER = "FAILED_CREATE_FOLDER";
+ErrorName.FAILED_IMPORT_ITEM = "FAILED_IMPORT_ITEM";
+ErrorName.AE_NO_FILES_ACCESS = "AE_NO_FILES_ACCESS";
+ErrorName.AE_UNSUPPORTED_VERSION = "AE_UNSUPPORTED_VERSION";
+ErrorName.NOT_INITIALIZED = "NOT_INITIALIZED";
+ErrorName.ALREADY_INITIALIZED = "ALREADY_INITIALIZED";
+ErrorName.SINGLETON_VIOLATION = "SINGLETON_VIOLATION";
+ErrorName.NOT_IMPLEMENTED_INTERFACE = "NOT_IMPLEMENTED_INTERFACE";
+ErrorName.CUSTOM_CONDITION = "CUSTOM_CONDITION";
+ErrorName.TYPE_MISMATCH = "TYPE_MISMATCH";
+ErrorName.INSTANCEOF_MISMATCH = "INSTANCEOF_MISMATCH";
+ErrorName.STRING_LENGTH = "STRING_LENGTH";
+ErrorName.STRING_REG_EXP = "STRING_REG_EXP";
+ErrorName.NUMBER_RANGE = "NUMBER_RANGE";
+ErrorName.STRING_ENVATO_ID = "STRING_ENVATO_ID";
+ErrorName.STRING_VERSION = "STRING_VERSION";
+ErrorName.STRING_ITEM_INDEX = "STRING_ITEM_INDEX";
+ErrorName.STRING_ITEM_ID = "STRING_ITEM_ID";
+ErrorName.STRING_NAME = "STRING_NAME";
+ErrorName.STRING_WORD = "STRING_WORD";
+ErrorName.STRING_CONTAINS = "STRING_CONTAINS";
+ErrorName.ONE_OF = "ONE_OF";
+ErrorName.LAYER_MISSING = "LAYER_MISSING";
+ErrorName.EFFECT_MISSING = "EFFECT_MISSING";
+ErrorName.INVALID_PURCHASE_CODE = "INVALID_PURCHASE_CODE";
+ErrorName.CONNECTION_ERROR = "CONNECTION_ERROR";
+
+function ScriptMode() {
+}
+ScriptMode.DEBUG = "Debug";
+ScriptMode.DEVELOP = "Develop";
+ScriptMode.RELEASE = "Release";
+
+function ErrorObject(name, message, file, line) {
+	AssertManager.typeString(name);
+	this.name = name;
+	this.file = file;
+	this.line = line;
+	this.message = message;
+}
+ErrorObject.prototype.toString = function () {
+	var str = "Error " + this.name;
+	if (this.line) {
+		str = str + " at line " + this.line;
+	}
+	if (this.file) {
+		str = str + " in file " + this.file;
+	}
+	str = str + "\nmessage: " + this.message;
+	return str;
+}
+ErrorObject.prototype.name = null;
+ErrorObject.prototype.message = null;
+ErrorObject.prototype.file = null;
+ErrorObject.prototype.line = null;
+
+function AssertManager() {
+}
+AssertManager.condition = function (value) {
+	if (value !== true) {
+		throw new ErrorObject(ErrorName.CUSTOM_CONDITION, "AssertManager: The condition is not satisfied.");
+	}
+}
+AssertManager.significant = function (value) {
+	if (!ValidateManager.significant(value)) {
+		throw new ErrorObject(ErrorName.TYPE_MISMATCH, "AssertManager: Value is not valid. : " + as_toString(value));
+	}
+}
+AssertManager.typeFunction = function (value) {
+	if (!ValidateManager.typeFunction(value)) {
+		throw new ErrorObject(ErrorName.TYPE_MISMATCH, "AssertManager: Value is not a function.");
+	}
+}
+AssertManager.typeString = function (value) {
+	if (!ValidateManager.typeString(value)) {
+		throw new ErrorObject(ErrorName.TYPE_MISMATCH, "AssertManager: Value is not a string.");
+	}
+}
+AssertManager.typeNumber = function (value) {
+	if (!ValidateManager.typeNumber(value)) {
+		throw new ErrorObject(ErrorName.TYPE_MISMATCH, "AssertManager: Value is not a number.");
+	}
+}
+AssertManager.typeBoolean = function (value) {
+	if (!ValidateManager.typeBoolean(value)) {
+		throw new ErrorObject(ErrorName.TYPE_MISMATCH, "AssertManager: Value is not a boolean.");
+	}
+}
+AssertManager.typeObject = function (value) {
+	if (!ValidateManager.typeObject(value)) {
+		throw new ErrorObject(ErrorName.TYPE_MISMATCH, "AssertManager: Value is not an object.");
+	}
+}
+AssertManager.instanceOf = function (value, classRef) {
+	if (!ValidateManager.instanceOf(value, classRef)) {
+		throw new ErrorObject(ErrorName.INSTANCEOF_MISMATCH, "AssertManager: Value is not a " + JSON.stringify(classRef) + ".");
+	}
+}
+AssertManager.stringLengthRange = function (value, min, max) {
+	if (!ValidateManager.typeString(value)) {
+		throw new ErrorObject(ErrorName.TYPE_MISMATCH, "AssertManager: Value is not a string.");
+	}
+	if (!ValidateManager.stringLengthRange(value, min, max)) {
+		throw new ErrorObject(ErrorName.STRING_LENGTH, "AssertManager: String length is out of valid range.");
+	}
+}
+AssertManager.stringLength = function (value, length) {
+	if (!ValidateManager.typeString(value)) {
+		throw new ErrorObject(ErrorName.TYPE_MISMATCH, "AssertManager: Value is not a string.");
+	}
+	if (!ValidateManager.stringLength(value, length)) {
+		throw new ErrorObject(ErrorName.STRING_LENGTH, "AssertManager: String has an invalid length.");
+	}
+}
+AssertManager.numberRange = function (value, min, max) {
+	if (!ValidateManager.typeNumber(value)) {
+		throw new ErrorObject(ErrorName.TYPE_MISMATCH, "AssertManager: Value is not a number.");
+	}
+	if (!ValidateManager.numberRange(value, min, max)) {
+		throw new ErrorObject(ErrorName.NUMBER_RANGE, "AssertManager: Number is out of valid range.");
+	}
+}
+AssertManager.numberEnvatoID = function (value) {
+	if (!ValidateManager.typeNumber(value)) {
+		throw new ErrorObject(ErrorName.TYPE_MISMATCH, "AssertManager: Value is not a number.");
+	}
+	if (!ValidateManager.numberEnvatoID(value)) {
+		throw new ErrorObject(ErrorName.STRING_ENVATO_ID, "AssertManager: Number is not valid Envato Item ID.");
+	}
+}
+AssertManager.stringVersion = function (value) {
+	if (!ValidateManager.typeString(value)) {
+		throw new ErrorObject(ErrorName.TYPE_MISMATCH, "AssertManager: Value is not a string.");
+	}
+	if (!ValidateManager.stringVersion(value)) {
+		throw new ErrorObject(ErrorName.STRING_VERSION, "AssertManager: String is not a valid version number.");
+	}
+}
+AssertManager.stringWord = function (value) {
+	if (!ValidateManager.typeString(value)) {
+		throw new ErrorObject(ErrorName.TYPE_MISMATCH, "AssertManager: Value is not a string.");
+	}
+	if (!ValidateManager.stringWord(value)) {
+		throw new ErrorObject(ErrorName.STRING_WORD, "AssertManager: String is not valid word.");
+	}
+}
+AssertManager.stringContains = function (value, str) {
+	if (!ValidateManager.typeString(value)) {
+		throw new ErrorObject(ErrorName.TYPE_MISMATCH, "AssertManager: Value is not a string.");
+	}
+	if (!ValidateManager.stringContains(value, str)) {
+		throw new ErrorObject(ErrorName.STRING_CONTAINS, "AssertManager: String does not contain " + JSON.stringify(str) + ".");
+	}
+}
+AssertManager.oneOf = function (value, arr) {
+	if (!ValidateManager.oneOf(value, arr)) {
+		throw new ErrorObject(ErrorName.ONE_OF, "AssertManager: Value not found in array.");
+	}
+}
+
+function ImagesManager() {
+	if(ImagesManager._instance != null) {
+		throw new ErrorObject(ErrorName.SINGLETON_VIOLATION, this.constructor.name + " instance already constructed.", $.fileName, $.line);
+	}
+	ImagesManager._instance = this;
+	this._initialized = false;
+}
+ImagesManager._instance = null;
+ImagesManager.getInstance = function() {
+	if (ImagesManager._instance == null) {
+		ImagesManager._instance = new ImagesManager();
+	}
+	return ImagesManager._instance;
+}
+ImagesManager.prototype.initializeManager = function (imagesData, assetsDir, rewriteFiles) {
+	AssertManager.typeObject(imagesData);
+	AssertManager.instanceOf(assetsDir, Folder);
+	if (this._initialized) {
+		throw new ErrorObject(ErrorName.ALREADY_INITIALIZED, this.constructor.name + " instance already initialized.", $.fileName, $.line);
+	}
+	this._imagesMap = {};
+	this._imagesData = imagesData;
+	this._imagesDir = Folder(assetsDir.fsName + "/images");
+	if (!this._imagesDir.exists) {
+		this._imagesDir.create();
+	}
+	this._rewriteFiles = rewriteFiles;
+	this._initialized = true;
+}
+ImagesManager.prototype.getUIImage = function(fileName) {
+	if (!this._initialized) {
+		throw new ErrorObject(ErrorName.NOT_INITIALIZED, this.constructor.name + " is not initialized.", $.fileName, $.line);
+	}
+	if(this._imagesMap[fileName] === undefined) {
+		var fileImage = this.getImageFile(fileName);
+		if (fileImage != null) {
+			this._imagesMap[fileName] = ScriptUI.newImage(fileImage);
+		} else {
+			return null;
+		}
+	}
+	return this._imagesMap[fileName];
+}
+ImagesManager.prototype.getImageFile = function (fileName) {
+	if (!this._initialized) {
+		throw new ErrorObject(ErrorName.NOT_INITIALIZED, this.constructor.name + " is not initialized.", $.fileName, $.line);
+	}
+	var fileImage = File(this._imagesDir.fsName + "/" + fileName);
+	if (!fileImage.exists || this._rewriteFiles) {
+		var binary = this._imagesData[fileName];
+		if (binary != null) {
+			fileImage = as_fileWrite(fileImage, binary, true);
+		} else {
+			return null;
+		}
+	}
+	return fileImage;
+}
+ImagesManager.prototype.getImagesData = function () {
+	if (!this._initialized) {
+		throw new ErrorObject(ErrorName.NOT_INITIALIZED, this.constructor.name + " is not initialized.", $.fileName, $.line);
+	}
+	return this._imagesData;
+}
+ImagesManager.prototype.getImagesDir = function () {
+	if (!this._initialized) {
+		throw new ErrorObject(ErrorName.NOT_INITIALIZED, this.constructor.name + " is not initialized.", $.fileName, $.line);
+	}
+	return this._imagesDir;
+}
+ImagesManager.prototype.isInitialized = function () {
+	return this._initialized == true;
+}
+ImagesManager.prototype._imagesData = null;
+ImagesManager.prototype._imagesDir = null;
+ImagesManager.prototype._imagesMap = null;
+ImagesManager.prototype._rewriteFiles = null;
+ImagesManager.prototype._initialized = null;
+
+function UndoManager() {
+	if (UndoManager._instance != null) {
+		throw new ErrorObject(ErrorName.SINGLETON_VIOLATION, this.constructor.name + " instance already constructed.", $.fileName, $.line);
+	}
+	UndoManager._instance = this;
+}
+UndoManager._instance = null;
+UndoManager.getInstance = function () {
+	if (UndoManager._instance == null) {
+		UndoManager._instance = new UndoManager();
+	}
+	return UndoManager._instance;
+}
+UndoManager.prototype.initializeManager = function (prefix) {
+	AssertManager.typeString(prefix);
+	if (this._initialized) {
+		throw new ErrorObject(ErrorName.ALREADY_INITIALIZED, this.constructor.name + " instance already initialized.", $.fileName, $.line);
+	}
+	this._prefix = prefix;
+	this._initialized = true;
+}
+UndoManager.prototype.openUndoGroup = function (undoString, lockCode) {
+	if (!this._initialized) {
+		throw new ErrorObject(ErrorName.NOT_INITIALIZED, this.constructor.name + " not initialized.", $.fileName, $.line);
+	}
+	if (this.isLocked() && (lockCode != this._lockCode)) {
+		return;
+	} else if (lockCode) {
+		this._lockCode = lockCode;
+	}
+	if (this.hasUnclosedUndoGroup()) {
+		throw new ErrorObject(ErrorName.UNCLOSED_UNDO_GROUP, "Previous Undo Group not closed.", $.fileName, $.line);
+	}
+	if (this._prefix != null) {
+		undoString = undoString.replace((this._prefix + " - "), "");
+		this._currentUndoGroup = (this._prefix + " - " + undoString);
+	} else {
+		this._currentUndoGroup = undoString;
+	}
+	app.beginUndoGroup(this._currentUndoGroup);
+}
+UndoManager.prototype.closeUndoGroup = function (lockCode) {
+	if (!this._initialized) {
+		throw new ErrorObject(ErrorName.NOT_INITIALIZED, this.constructor.name + " not initialized.", $.fileName, $.line);
+	}
+	if (this.isLocked() && (lockCode != this._lockCode)) {
+		return;
+	} else if (lockCode) {
+		this._lockCode = null;
+	}
+	if (!this.hasUnclosedUndoGroup()) {
+		throw new ErrorObject(ErrorName.NO_UNDO_GROUP, "Attempt to close nonexistent Undo Group.", $.fileName, $.line);
+	}
+	app.endUndoGroup();
+	this._currentUndoGroup = null;
+}
+UndoManager.prototype.reset = function () {
+	if (!this._initialized) {
+		throw new ErrorObject(ErrorName.NOT_INITIALIZED, this.constructor.name + " not initialized.", $.fileName, $.line);
+	}
+	this._lockCode = null;
+	this._currentUndoGroup = null;
+	app.endUndoGroup();
+}
+UndoManager.prototype.hasUnclosedUndoGroup = function () {
+	return (this._currentUndoGroup != null);
+}
+UndoManager.prototype.getUnclosedUndoGroup = function () {
+	return this._currentUndoGroup;
+}
+UndoManager.prototype.isLocked = function () {
+	return this._lockCode != null;
+}
+UndoManager.prototype.isInitialized = function () {
+	return (this._initialized === true);
+}
+UndoManager.prototype._currentUndoGroup = null;
+UndoManager.prototype._lockCode = null;
+UndoManager.prototype._initialized = null;
+
+function ValidateManager() {
+}
+ValidateManager.significant = function (value) {
+	return (value !== null) && (value !== undefined);
+}
+ValidateManager.typeFunction = function (value) {
+	return (value !== null) && (typeof value === "function");
+}
+ValidateManager.typeString = function (value) {
+	return (value !== null) && (typeof value === "string");
+}
+ValidateManager.typeNumber = function (value) {
+	return (value !== null) && (typeof value === "number");
+}
+ValidateManager.typeBoolean = function (value) {
+	return (value !== null) && (typeof value === "boolean");
+}
+ValidateManager.typeObject = function (value) {
+	return (value !== null) && (typeof value === "object") && (value.constructor === Object);
+}
+ValidateManager.instanceOf = function (value, classRef) {
+	return (value instanceof classRef);
+}
+ValidateManager.stringLengthRange = function (value, min, max) {
+	AssertManager.typeNumber(min);
+	AssertManager.typeNumber(max);
+	return (value !== null) && (typeof value == "string") && (value.length >= min) && (value.length <= max);
+}
+ValidateManager.stringLength = function (value, length) {
+	AssertManager.typeNumber(length);
+	return (value !== null) && (typeof value == "string") && (value.length === length);
+}
+ValidateManager.numberRange = function (value, min, max) {
+	AssertManager.typeNumber(min);
+	AssertManager.typeNumber(max);
+	return (value !== null) && (typeof value == "number") && (value >= min) && (value <= max);
+}
+ValidateManager.numberEnvatoID = function (value) {
+	return (value !== null) && (typeof value == "number") && (value.toString().length === 8);
+}
+ValidateManager.stringVersion = function (value) {
+	return (value !== null) && (typeof value == "string") && (value.match(RegExpPattern.NUMBERS_DOT) === null) && (value.length >= 3) && ((value.split(".").length == 2) || (value.split(".").length == 3)) && (value != "0.0") && (value != "0.0.0");
+}
+ValidateManager.stringWord = function (value) {
+	return (value !== null) && (typeof value == "string") && (value.length > 0) && (value.indexOf(" ") == -1)
+}
+ValidateManager.stringContains = function (value, str) {
+	AssertManager.typeString(str);
+	return (value !== null) && (typeof value == "string") && (value.length > 0) && (value.indexOf(str) >= 0)
+}
+ValidateManager.oneOf = function (value, arr) {
+	AssertManager.instanceOf(arr, Array);
+	return (as_arrayCheckValue(value, arr) >= 0);
+}
+
+function Logger() {
+    if (Logger._instance != null) {
+        throw new ErrorObject(ErrorName.SINGLETON_VIOLATION, this.constructor.name + " instance already constructed.", $.fileName, $.line);
+    }
+    Logger._instance = this;
+}
+Logger._instance = null;
+Logger.getInstance = function () {
+    if (Logger._instance == null) {
+        Logger._instance = new Logger();
+    }
+    return Logger._instance;
+}
+Logger.prototype.initialize = function (logFile) {
+    if (logFile) {
+        this._logFile = logFile;
+    } else {
+        var logFileName = ("Log_" + (new Date().getTime()) + ".txt");
+        this._logFile = File(Folder.desktop.fsName + "/" + logFileName).saveDlg("Save log file", FileFilter.TXT);
+    }
+    var header = "";
+    header += "file: " + $.fileName + "\n";
+    header += "os: " + $.os + "\n";
+    header += "js version: " + $.version + "\n";
+    header += "ae version: " + app.version + "\n";
+    header += "log: " + "\n";
+    this._logFile.open("w");
+    this._logFile.write(header);
+    this._logFile.close();
+}
+Logger.prototype.log = function (comment, value) {
+    var str = comment;
+    if (value !== undefined) {
+        try {
+            str = str + " : " + as_toString(value);
+        } catch (error) {
+            str = str + " : " + "can't stringify value";
+        }
+    }
+    this._logFile.open("a");
+    this._logFile.writeln(str);
+    this._logFile.close();
+}
+Logger.log = function (comment, value) {
+    Logger.getInstance().log(comment, value);
+}
+Logger.prototype._logFile = null;
+
+function Profiler(key) {
+	AssertManager.typeString(key);
+	this._log = [key];
+	this._total = 0;
+	$.hiresTimer;
+}
+Profiler.prototype.step = function (comment, startOrEnd) {
+	var t = ($.hiresTimer * 0.001);
+	this._total += t;
+	if (startOrEnd === true) {
+		this._log.push("\t");
+	}
+	this._log.push(t.toFixed(2) + " (ms) : " + comment);
+	if (startOrEnd === false) {
+		this._log.push("\t");
+	}
+}
+Profiler.prototype.complete = function () {
+	this._log.push(("total : " + this._total + " (ms)"));
+}
+Profiler.prototype.show = function () {
+	this.complete();
+	alert(this._log.join("\n"), this.constructor.name);
+}
+Profiler.prototype.reset = function () {
+	this._total = 0;
+	this._log = this._log.slice(0, 1);
+	$.hiresTimer;
+}
+Profiler.prototype.getLog = function () {
+	return this._log;
+}
+Profiler.prototype.getTotal = function () {
+	return this._total;
+}
+Profiler.prototype._log = null;
+Profiler.prototype._total = null;
+
+function ProfilerGlobal() {
+	if (ProfilerGlobal._instance != null) {
+		throw new ErrorObject(ErrorName.SINGLETON_VIOLATION, this.constructor.name + " instance already constructed.", $.fileName, $.line);
+	}
+	ProfilerGlobal._instance = this;
+}
+ProfilerGlobal._instance = null;
+ProfilerGlobal.getInstance = function () {
+	if (ProfilerGlobal._instance == null) {
+		ProfilerGlobal._instance = new ProfilerGlobal();
+	}
+	return ProfilerGlobal._instance;
+}
+ProfilerGlobal.prototype.initialize = function (name, file) {
+	if (this.profiler) {
+		this.profiler.reset();
+	} else {
+		this.profiler = new Profiler(name);
+	}
+	this.file = file;
+}
+ProfilerGlobal.prototype.profiler = null;
+ProfilerGlobal.prototype.file = null;
+ProfilerGlobal.step = function (comment, startOrEnd) {
+	ProfilerGlobal._instance.profiler.step(comment, startOrEnd);
+}
+ProfilerGlobal.reset = function () {
+	ProfilerGlobal._instance.profiler.reset();
+}
+ProfilerGlobal.complete = function () {
+	ProfilerGlobal._instance.profiler.complete();
+}
+ProfilerGlobal.saveLog = function (showLog) {
+	var str = ProfilerGlobal._instance.profiler.getLog().join("\n") + "\n";
+	as_fileWrite(ProfilerGlobal._instance.file, str, false);
+	if (showLog) {
+		ProfilerGlobal._instance.file.execute();
+	}
+}
+
+function BaseEventTarget() {
+	this._listenersMap = {};
+}
+BaseEventTarget.prototype.addEventListener = function (eventName, listenerMethod, listenerContext) {
+	AssertManager.typeString(eventName);
+	AssertManager.typeFunction(listenerMethod);
+	AssertManager.significant(listenerContext);
+	var listener = new EventListener(listenerMethod, listenerContext);
+	if (this._listenersMap[eventName] != null) {
+		this._listenersMap[eventName].push(listener);
+	} else {
+		this._listenersMap[eventName] = [listener];
+	}
+}
+BaseEventTarget.prototype.removeEventListener = function (eventName, listenerMethod) {
+	AssertManager.typeString(eventName);
+	AssertManager.typeFunction(listenerMethod);
+	if (this._listenersMap[eventName]) {
+		for (var i = 0, listener; i < this._listenersMap[eventName].length; i++) {
+			listener = this._listenersMap[eventName][i];
+			if (listener.getListenerMethod() == listenerMethod) {
+				this._listenersMap[eventName].slice(i, 1);
+				return true;
+			}
+		}
+	}
+	return false;
+}
+BaseEventTarget.prototype.removeAllEventListeners = function () {
+	for (var eventName in this._listenersMap) {
+		if (this._listenersMap.hasOwnProperty(eventName)) {
+			for (var i = 0; i < this._listenersMap[eventName].length; i++) {
+				delete this._listenersMap[eventName][i];
+			}
+		}
+	}
+}
+BaseEventTarget.prototype._dispatchEvent = function (eventName, eventData) {
+	AssertManager.typeString(eventName);
+	if (this._listenersMap[eventName] != null) {
+		var listenersList = this._listenersMap[eventName];
+		for (var i = 0, listener; i < listenersList.length; i++) {
+			listener = listenersList[i];
+			listener.notifyListener(eventName, eventData);
+		}
+	}
+}
+BaseEventTarget.prototype._listenersMap = null;
+
+function EventListener(listenerMethod, listenerContext) {
+	AssertManager.instanceOf(listenerMethod, Function);
+	AssertManager.instanceOf(listenerContext, Object);
+	this.setListenerMethod(listenerMethod);
+	this.setListenerContext(listenerContext);
+}
+EventListener.prototype.setListenerMethod = function (listenerMethod) {
+	AssertManager.typeFunction(listenerMethod);
+	this._listenerMethod = listenerMethod;
+}
+EventListener.prototype.setListenerContext = function (listenerContext) {
+	AssertManager.significant(listenerContext);
+	this._listenerContext = listenerContext;
+}
+EventListener.prototype.getListenerMethod = function() {
+	return this._listenerMethod;
+}
+EventListener.prototype.getListenerContext = function() {
+	return this._listenerContext;
+}
+EventListener.prototype.notifyListener = function (eventName, eventData) {
+	AssertManager.typeString(eventName);
+	this._listenerMethod.apply(this._listenerContext, [eventName, eventData]);
+}
+EventListener.prototype._listenerMethod = null;
+EventListener.prototype._listenerContext = null;
+
+function BaseCEPProxy() {
+    Proxy.apply(this, [ProxyName.CEP]);
+}
+BaseCEPProxy.prototype = new Proxy;
+BaseCEPProxy.prototype.constructor = BaseCEPProxy;
+BaseCEPProxy.prototype.onRegister = function () {
+   
+    try {
+        var eoName;
+        if (Folder.fs === 'Macintosh') {
+            eoName = "PlugPlugExternalObject";
+        } else {
+            eoName = "PlugPlugExternalObject.dll";
+        }
+        this._externalLib = new ExternalObject('lib:' + eoName);
+    } catch (err) {
+        alert("Missing ExternalObject! Error: " + err.message);
+    }
+   
+}
+BaseCEPProxy.prototype.sendNotification = function (notificationName, body, type) {
+    var eventObj = new CSXSEvent();
+    eventObj.type = ESEventName.NOTIFICATION;
+   
+    eventObj.data = JSON.stringify([notificationName, body, type]);
+	eventObj.dispatch();
+   
+}
+BaseCEPProxy.prototype._externalLib = null;
+
+function CommandCenter() {
+	Proxy.apply(this, [ProxyName.COMMAND_CENTER]);
+}
+CommandCenter.prototype = new Proxy;
+CommandCenter.prototype.constructor = CommandCenter;
+CommandCenter.prototype.initializeCommand = function (command) {
+	AssertManager.instanceOf(command, SimpleCommand);
+	if (this._initialized) {
+		throw new ErrorObject(ErrorName.ALREADY_INITIALIZED, "CommandCenter already initialized. Call completeCommand() to complete current command.");
+	}
+	this._initialized = true;
+	this._updatesMap = {};
+	this._updatedFiles = [];
+	this._primaryCommand = command;
+}
+CommandCenter.prototype.completeCommand = function (silent) {
+	if (!this._initialized) {
+		throw new ErrorObject(ErrorName.NOT_INITIALIZED, "CommandCenter not initialized.");
+	}
+	if (this._successful) {
+		if (this._successMessage && !silent) {
+			alert(this._successMessage);
+		}
+	} else if (this._failed) {
+		if (this._failMessage && !silent) {
+			alert(this._failMessage);
+		}
+	} else if (this._error) {
+		if (this._errorMessage && !silent) {
+			alert(this._errorMessage);
+		}
+	}
+	for (var i = 0, proxy; i < this._updatedFiles.length; i++) {
+		proxy = this.facade.retrieveProxy(this._updatedFiles[i]);
+		if (proxy && (proxy instanceof DynamicFileProxy)) {
+			proxy.checkUnsavedData();
+		} else {
+			alert("Error. Invalid proxy : \"" + this._updatedFiles[i] + "\".");
+		}
+	}
+	for (var notificationName in this._updatesMap) {
+		if (this._updatesMap.hasOwnProperty(notificationName)) {
+			var scope = this._updatesMap[notificationName];
+			this.facade.sendNotification(notificationName, scope);
+		}
+	}
+	this.resetAllResults();
+	this._primaryCommand = null;
+	this._initialized = false;
+}
+CommandCenter.prototype.setSuccessful = function (message) {
+	if (!this._initialized) {
+		throw new ErrorObject(ErrorName.NOT_INITIALIZED, "CommandCenter not initialized.");
+	}
+	this._successful = true;
+	this._failed = false;
+	this._error = null;
+	if (typeof message === "string") {
+		this._successMessage = message;
+	}
+}
+CommandCenter.prototype.setFailed = function (message) {
+	if (!this._initialized) {
+		throw new ErrorObject(ErrorName.NOT_INITIALIZED, "CommandCenter not initialized.");
+	}
+	this._failed = true;
+	this._successful = false;
+	if (typeof message === "string") {
+		this._failMessage = message;
+	}
+}
+CommandCenter.prototype.setError = function (error, message) {
+	if (!this._initialized) {
+		throw new ErrorObject(ErrorName.NOT_INITIALIZED, "CommandCenter not initialized.");
+	}
+	AssertManager.instanceOf(error, ErrorObject);
+	this._error = error;
+	this._successful = false;
+	if (typeof message === "string") {
+		this._errorMessage = message;
+	}
+}
+CommandCenter.prototype.setUpdates = function (notificationName, scope) {
+	AssertManager.typeString(notificationName);
+	if (!this._initialized) {
+		throw new ErrorObject(ErrorName.NOT_INITIALIZED, "CommandCenter not initialized.");
+	}
+	var noteScope = this._updatesMap[notificationName];
+	if (!noteScope) {
+		noteScope = this._updatesMap[notificationName] = [];
+	}
+	if (typeof scope === "string") {
+		if (as_arrayCheckValue(scope, noteScope) < 0) {
+			noteScope.push(scope);
+		}
+	} else if (scope instanceof Array) {
+		for (var i = 0; i < scope.length; i++) {
+			if (as_arrayCheckValue(scope[i], noteScope) < 0) {
+				noteScope.push(scope[i]);
+			}
+		}
+	}
+}
+CommandCenter.prototype.setFileUpdated = function (proxyName) {
+	if (as_arrayCheckValue(proxyName, this._updatedFiles) == -1) {
+		this._updatedFiles.push(proxyName);
+	}
+}
+CommandCenter.prototype.resetAllResults = function () {
+	if (!this._initialized) {
+		throw new ErrorObject(ErrorName.NOT_INITIALIZED, "CommandCenter not initialized.");
+	}
+	this._successful = null;
+	this._successMessage = null;
+	this._failed = null;
+	this._failMessage = null;
+	this._error = null;
+	this._errorMessage = null;
+	this._updatesMap = {};
+	this._updatedFiles = [];
+}
+CommandCenter.prototype.isSuccessful = function () {
+	return (this._successful === true);
+}
+CommandCenter.prototype.isFailed = function () {
+	return (this._failed === true);
+}
+CommandCenter.prototype.hasError = function () {
+	return (this._error != null);
+}
+CommandCenter.prototype.isInitialized = function () {
+	return (this._initialized === true);
+}
+CommandCenter.prototype.isPrimaryCommand = function (command) {
+	return this._primaryCommand == command;
+}
+CommandCenter.prototype._successful = null;
+CommandCenter.prototype._successMessage = null;
+CommandCenter.prototype._failed = null;
+CommandCenter.prototype._failMessage = null;
+CommandCenter.prototype._error = null;
+CommandCenter.prototype._errorMessage = null;
+CommandCenter.prototype._updatesMap = null;
+CommandCenter.prototype._primaryCommand = null;
+CommandCenter.prototype._initialized = null;
+CommandCenter.prototype._updatedFiles = null;
+
+function DynamicFileProxy(file, proxyName, prettyJSON, saveBackup) {
+	AssertManager.instanceOf(file, File);
+	this._file = file;
+	this._prettyJSON = (prettyJSON === true);
+	this._saveBackup = (saveBackup === true);
+	StaticFileProxy.apply(this, [file, proxyName]);
+}
+var Transitive = new Function;
+Transitive.prototype = StaticFileProxy.prototype;
+DynamicFileProxy.prototype = new Transitive;
+DynamicFileProxy.prototype.constructor = DynamicFileProxy;
+DynamicFileProxy.prototype.checkUnsavedData = function () {
+	var currentHash = StringTools.hashFunc(JSON.stringify(this._fileData));
+	if (this._fileDataHash != currentHash) {
+		this._writeFile(currentHash);
+		return true;
+	}
+	return false;
+}
+DynamicFileProxy.prototype.renameFile = function (newFileName) {
+	AssertManager.typeString(newFileName);
+	if (this._file.exists) {
+		return this._file.rename(newFileName);
+	}
+	return null;
+}
+DynamicFileProxy.prototype.getFileData = function () {
+	return this._fileData;
+}
+DynamicFileProxy.prototype.getFileName = function () {
+	return as_getFileName(this._file);
+}
+DynamicFileProxy.prototype.getFile = function () {
+	return this._file;
+}
+DynamicFileProxy.prototype._readFile = function () {
+	if (this._file.exists) {
+		if (("." + as_getFileExtension(this._file)) === FileExtension.JSXINC) {
+			this._fileData = as_fileReadJSBinary(this._file);
+		} else {
+			this._fileData = as_fileReadJSON(this._file);
+		}
+		this._fileModifiedTime = this._file.modified.getTime();
+		this._fileDataHash = StringTools.hashFunc(JSON.stringify(this._fileData));
+	} else {
+		this._fileData = null;
+		this._fileModifiedTime = null;
+		this._fileDataHash = null;
+	}
+}
+DynamicFileProxy.prototype._writeFile = function (currentHash) {
+	if (this._fileData != null) {
+		if (("." + as_getFileExtension(this._file)) === FileExtension.JSXINC) {
+			as_fileWriteJSBinary(this._file, this._fileData, (this._prettyJSON ? "\t" : undefined), this._saveBackup);
+		} else {
+			as_fileWriteJSON(this._file, this._fileData, (this._prettyJSON ? "\t" : undefined), this._saveBackup);
+		}
+		this._fileModifiedTime = this._file.modified.getTime();
+		this._fileDataHash = currentHash;
+	} else {
+		this._fileModifiedTime = null;
+		this._fileDataHash = null;
+	}
+}
+DynamicFileProxy.prototype._file = null;
+DynamicFileProxy.prototype._fileData = null;
+DynamicFileProxy.prototype._fileDataHash = null;
+DynamicFileProxy.prototype._saveBackup = null;
+DynamicFileProxy.prototype._prettyJSON = null;
+
+function OSProxy(scriptFolderName, versionFolderName) {
+	this._scriptFolderName = scriptFolderName;
+	this._versionFolderName = versionFolderName;
+	Proxy.apply(this, [ProxyName.OS]);
+}
+OSProxy.prototype = new Proxy;
+OSProxy.prototype.constructor = OSProxy;
+OSProxy.prototype.getAssetsDirectory = function () {
+	return as_getTempFolder(this._scriptFolderName, this._versionFolderName);
+}
+OSProxy.prototype._latestSelectedFile = null;
+OSProxy.prototype._scriptFolderName = null;
+OSProxy.prototype._versionFolderName = null;
+
+function StaticFileProxy(file, proxyName) {
+	AssertManager.instanceOf(file, File);
+	this._file = file;
+	Proxy.apply(this, [proxyName || ProxyName.FILE]);
+}
+StaticFileProxy.prototype = new Proxy;
+StaticFileProxy.prototype.constructor = StaticFileProxy;
+StaticFileProxy.prototype.onRegister = function () {
+	this._readFile();
+}
+StaticFileProxy.prototype.onRemove = function () {
+	this._file = null;
+	this._fileData = null;
+}
+StaticFileProxy.prototype.checkFileUpdated = function () {
+	if (!this._file.exists) {
+		this._fileData = null;
+		this._fileModifiedTime = null;
+		return false;
+	}
+	var modified = (this._file.modified.getTime() != this._fileModifiedTime);
+	if (modified === true) {
+		this._readFile();
+		return true;
+	}
+	return false;
+}
+StaticFileProxy.prototype.getFileData = function () {
+	return this._fileData;
+}
+StaticFileProxy.prototype.getFileName = function () {
+	return as_getFileName(this._file);
+}
+StaticFileProxy.prototype.getFile = function () {
+	return this._file;
+}
+StaticFileProxy.prototype._readFile = function () {
+	if (this._file.exists) {
+		if (("." + as_getFileExtension(this._file)) === FileExtension.JSXINC) {
+			this._fileData = as_fileReadJSBinary(this._file);
+		} else {
+			this._fileData = as_fileReadJSON(this._file);
+		}
+		this._fileModifiedTime = this._file.modified.getTime();
+	} else {
+		this._fileData = null;
+		this._fileModifiedTime = null;
+	}
+}
+StaticFileProxy.prototype._file = null;
+StaticFileProxy.prototype._fileData = null;
+StaticFileProxy.prototype._fileModifiedTime = null;
+
+function BaseViewComponent(uiContainer) {
+	AssertManager.instanceOf(uiContainer, Object);
+	BaseEventTarget.call(this);
+	this._uiContainer = uiContainer;
+}
+BaseViewComponent.prototype = new BaseEventTarget;
+BaseViewComponent.prototype.constructor = BaseViewComponent;
+BaseViewComponent.prototype.initializeComponent = function () {
+	this._stopListHandling = false;
+	this._stopFocusHandling = false;
+	this._stopUserInputHandling = false;
+}
+BaseViewComponent.prototype.getUIContainer = function() {
+	return this._uiContainer;
+}
+BaseViewComponent.prototype.setEnabled = function(enabled) {
+	this._uiContainer.enabled = enabled;
+}
+BaseViewComponent.prototype._updateDropDownList = function (list, value, itemsText, itemsData) {
+	this._stopListHandling = true;
+	if ((value === undefined) && list.selection) {
+		value = list.selection.itemData;
+	}
+	if ((itemsText !== undefined) && (itemsText !== undefined)) {
+		list.removeAll();
+		for (var i = 0, listItem; i < itemsText.length; i++) {
+			listItem = list.add("item", itemsText[i]);
+			listItem.itemData = itemsData[i];
+			if ((value != null) && DataTools.isEquals(value, listItem.itemData)) {
+				list.selection = listItem;
+			}
+		}
+	} else {
+		for (var i = 0, listItem; i < list.items.length; i++) {
+			listItem = list.items[i];
+			if ((value != null) && DataTools.isEquals(value, listItem.itemData)) {
+				list.selection = listItem;
+			}
+		}
+	}
+	if (value === null) {
+		list.selection = null;
+	} else if (list.selection == null) {
+		list.selection = 0;
+	}
+	this._stopListHandling = false;
+}
+BaseViewComponent.prototype._updateListBox = function (listBox, value, icons, itemsText, itemsData, itemsSubItems) {
+	this._stopListHandling = true;
+	var value;
+	if ((value === undefined) && listBox.selection) {
+		value = listBox.selection.itemData;
+	}
+	if ((itemsText !== undefined) && (itemsData !== undefined) && (itemsSubItems !== undefined)) {
+		listBox.removeAll();
+		for (var i = 0, item, subItems; i < itemsText.length; i++) {
+			item = listBox.add("item", itemsText[i]);
+			item.itemData = itemsData[i];
+			subItems = itemsSubItems[i];
+			for (var s = 0; s < subItems.length; s++) {
+				item.subItems[s].text = subItems[s];
+			}
+			if (icons[i] != null) {
+				item.subItems[0].image = icons[i];
+			}
+		}
+	}
+	if (value !== undefined) {
+		for (var i = 0, listItem; i < listBox.items.length; i++) {
+			listItem = listBox.items[i];
+			if (listItem.itemData == value) {
+				listBox.selection = listItem;
+			}
+		}
+	}
+	if (listBox.selection == null) {
+		listBox.selection = 0;
+	}
+	this._stopListHandling = false;
+}
+BaseViewComponent.prototype._formatTextFieldValue = function (textField, value, regexp, allowEmpty, min, max, decimals) {
+	AssertManager.significant(textField);
+	var outText = (value !== undefined) ? value.toString() : textField.text;
+	if (regexp !== undefined) {
+		AssertManager.instanceOf(regexp, RegExp);
+		if (outText.match(regexp) !== null) {
+			outText = outText.replace(regexp, "");
+		}
+	}
+	if (outText.length == 0) {
+		if (allowEmpty !== undefined) {
+			AssertManager.typeBoolean(allowEmpty);
+			if (allowEmpty) {
+				textField.text = outText;
+				return;
+			} else {
+				outText = "0";
+			}
+		}
+	}
+	if ((min !== undefined) && (max !== undefined)) {
+		AssertManager.typeNumber(min);
+		AssertManager.typeNumber(max);
+		if (!isNaN(parseFloat(outText))) {
+			outText = as_clamp(parseFloat(outText), min, max).toString();
+		} else {
+			outText = as_clamp(0, min, max).toString();
+		}
+	}
+	if (decimals !== undefined) {
+		AssertManager.typeNumber(decimals);
+		outText = parseFloat(parseFloat(outText).toFixed(decimals)).toString();
+	}
+	if (textField.text != outText) {
+		textField.text = outText;
+	}
+}
+BaseViewComponent.prototype._uiContainer = null;
+BaseViewComponent.prototype._stopListHandling = null;
+BaseViewComponent.prototype._stopFocusHandling = null;
+BaseViewComponent.prototype._stopUserInputHandling = null;
+
+function BaseWindowComponent(window, uiData) {
+	AssertManager.typeObject(uiData);
+	this._uiData = uiData;
+	BaseViewComponent.apply(this, [window]);
+}
+var Transitive = new Function;
+Transitive.prototype = BaseViewComponent.prototype;
+BaseWindowComponent.prototype = new Transitive;
+BaseWindowComponent.prototype.constructor = BaseWindowComponent;
+BaseWindowComponent.prototype.setEnabled = function (enabled) {
+	throw new ErrorObject(ErrorName.NOT_IMPLEMENTED_INTERFACE, "Not Implemented Interface.");
+}
+BaseWindowComponent.prototype.initializeComponent = function () {
+	BaseViewComponent.prototype.initializeComponent.call(this);
+	var imagesManager = ImagesManager.getInstance();
+	if (imagesManager.isInitialized()) {
+		as_uiCreateFromData(this._uiContainer, this._uiData, imagesManager.getImagesData(), imagesManager.getImagesDir(),  true);
+	} else {
+		as_uiCreateFromData(this._uiContainer, this._uiData, undefined, undefined,  true);
+	}
+	delete this._uiData;
+	var _this = this;
+	this._uiContainer.onActivate = function () {
+		_this._isWinActive = true;
+	}
+	this._uiContainer.onDeactivate = function () {
+		_this._isWinActive = false;
+	}
+}
+BaseWindowComponent.prototype.showWindow = function() {
+	if (this._isPanel) {
+		this._uiContainer.layout.layout(true);
+	} else {
+		this._uiContainer.center();
+		this._uiContainer.show();
+	}
+}
+BaseWindowComponent.prototype.hideWindow = function() {
+	this._uiContainer.hide();
+}
+BaseWindowComponent.prototype.isPanel = function() {
+	return this._isPanel;
+}
+BaseWindowComponent.prototype.isWinActive = function() {
+	return this._isWinActive;
+}
+BaseWindowComponent.prototype._isPanel = false;
+BaseWindowComponent.prototype._isWinActive = false;
+BaseWindowComponent.prototype._uiData = null;
+
+function BaseMediator(mediatorName, viewComponent) {
+	AssertManager.typeString(mediatorName);
+	AssertManager.instanceOf(viewComponent, BaseViewComponent);
+	Mediator.apply(this, [mediatorName, viewComponent]);
+}
+BaseMediator.prototype = new Mediator;
+BaseMediator.prototype.constructor = BaseMediator;
+BaseMediator.prototype._handleViewEvent = function (eventName, eventData) {
+	throw new ErrorObject(ErrorName.NOT_IMPLEMENTED_INTERFACE, "Not Implemented Interface.");
+}
+BaseMediator.prototype._updateViewComponent = function () {
+	throw new ErrorObject(ErrorName.NOT_IMPLEMENTED_INTERFACE, "Not Implemented Interface.");
+}
+
+function BaseFacade(key) {
+	AssertManager.typeString(key);
+	Facade.apply(this, [key]);
+}
+var Transitive = new Function;
+Transitive.prototype = Facade.prototype;
+BaseFacade.prototype = new Transitive;
+BaseFacade.prototype.constructor = BaseFacade;
+BaseFacade.prototype.getScriptName = function () {
+	throw new ErrorObject(ErrorName.NOT_IMPLEMENTED_INTERFACE, "Not Implemented Interface.");
+}
+BaseFacade.prototype.getSupportedEngines = function () {
+	throw new ErrorObject(ErrorName.NOT_IMPLEMENTED_INTERFACE, "Not Implemented Interface.");
+}
+BaseFacade.prototype.getRootFolderName = function () {
+	throw new ErrorObject(ErrorName.NOT_IMPLEMENTED_INTERFACE, "Not Implemented Interface.");
+}
+BaseFacade.prototype.getScriptDataDirName = function () {
+	throw new ErrorObject(ErrorName.NOT_IMPLEMENTED_INTERFACE, "Not Implemented Interface.");
+}
+BaseFacade.prototype.getSettingsSectionName = function () {
+	throw new ErrorObject(ErrorName.NOT_IMPLEMENTED_INTERFACE, "Not Implemented Interface.");
+}
+BaseFacade.prototype.getScriptMode = function () {
+	throw new ErrorObject(ErrorName.NOT_IMPLEMENTED_INTERFACE, "Not Implemented Interface.");
+}
+BaseFacade.prototype.getScriptVersion = function () {
+	throw new ErrorObject(ErrorName.NOT_IMPLEMENTED_INTERFACE, "Not Implemented Interface.");
+}
+BaseFacade.prototype.getAEMinVersion = function () {
+	throw new ErrorObject(ErrorName.NOT_IMPLEMENTED_INTERFACE, "Not Implemented Interface.");
+}
