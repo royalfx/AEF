@@ -70,7 +70,7 @@ function as_makeSingleFile(rootDir, config, mainFile, outFile) {
                 tag = config.includeLines[i];
 				inx = line.indexOf(tag);
 				if (inx >= 0) {
-                    linesArray[l] = line.replace("// " + tag, "");
+                    linesArray[l] = line.replace("/" + "/ " + tag, "");
 				}
 			}
 		}
@@ -124,7 +124,7 @@ function as_makeSingleFile(rootDir, config, mainFile, outFile) {
 				lines.push(recursiveCollectFiles(File(filePath), config, collectedFiles));
 
 			// Skip comments
-            } else if (lineWithoutTabs.indexOf("//") !== 0) {
+            } else if (lineWithoutTabs.indexOf("/" + "/") !== 0) {
                 lines.push(line);
             }
         }

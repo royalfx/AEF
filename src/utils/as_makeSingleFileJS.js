@@ -77,7 +77,7 @@ function as_makeSingleFileJS(rootDir, config, includeFile, outFile) {
                 tag = config.includeLines[i];
                 inx = line.indexOf(tag);
                 if (inx >= 0) {
-                    linesArray[l] = line.replace("// " + tag, "");
+					linesArray[l] = line.replace("/" + "/ " + tag, "");
                 }
             }
 		}
@@ -93,7 +93,7 @@ function as_makeSingleFileJS(rootDir, config, includeFile, outFile) {
         for (var l = 0, line, lineTabsClear; l < linesArray.length; l++) {
             line = linesArray[l];
             lineTabsClear = line.replace(new RegExp("\t|\s", "g"), "");
-			if ((lineTabsClear.indexOf("//") == 0) || (line.indexOf("use strict") >= 0)) {
+			if ((lineTabsClear.indexOf("/" + "/") == 0) || (line.indexOf("use strict") >= 0)) {
                 linesArray.splice(l, 1);
                 l--;
                 continue;

@@ -16,7 +16,9 @@ function as_createDataFile(filesList, outFile, fileExtension) {
     var jsonString;
     if (filesList instanceof Folder) {
         filesList = filesList.getFiles("*" + fileExtension);
-    }
+	} else if (filesList instanceof File) {
+		filesList = [filesList];
+	}
    
     var data = {};
     for (var f = 0, file, binString; f < filesList.length; f++) {
@@ -140,7 +142,7 @@ function as_makeSingleFile(rootDir, config, mainFile, outFile) {
                 tag = config.includeLines[i];
 				inx = line.indexOf(tag);
 				if (inx >= 0) {
-                    linesArray[l] = line.replace(
+                    linesArray[l] = line.replace("/" + "/ " + tag, "");
 				}
 			}
 		}
@@ -182,7 +184,7 @@ function as_makeSingleFile(rootDir, config, mainFile, outFile) {
                     filePath = rootDir.fullName + "/" + filePath;
                 }
 				lines.push(recursiveCollectFiles(File(filePath), config, collectedFiles));
-            } else if (lineWithoutTabs.indexOf(
+            } else if (lineWithoutTabs.indexOf("/" + "/") !== 0) {
                 lines.push(line);
             }
         }
@@ -245,7 +247,7 @@ function as_makeSingleFileJS(rootDir, config, includeFile, outFile) {
                 tag = config.includeLines[i];
                 inx = line.indexOf(tag);
                 if (inx >= 0) {
-                    linesArray[l] = line.replace(
+					linesArray[l] = line.replace("/" + "/ " + tag, "");
                 }
             }
 		}
@@ -258,7 +260,7 @@ function as_makeSingleFileJS(rootDir, config, includeFile, outFile) {
         for (var l = 0, line, lineTabsClear; l < linesArray.length; l++) {
             line = linesArray[l];
             lineTabsClear = line.replace(new RegExp("\t|\s", "g"), "");
-			if ((lineTabsClear.indexOf(
+			if ((lineTabsClear.indexOf("/" + "/") == 0) || (line.indexOf("use strict") >= 0)) {
                 linesArray.splice(l, 1);
                 l--;
                 continue;

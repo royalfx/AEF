@@ -1,7 +1,7 @@
 /**
- * @param {*} filesList Folder or Array [File]
+ * @param {*} filesList File or Folder or Array [File]
  * @param {File} outFile
- * @param {string} fileExtension
+ * @param {string} fileExtension (Optional)
  */
 function as_createDataFile(filesList, outFile, fileExtension) {
 
@@ -14,7 +14,9 @@ function as_createDataFile(filesList, outFile, fileExtension) {
 
     if (filesList instanceof Folder) {
         filesList = filesList.getFiles("*" + fileExtension);
-    }
+	} else if (filesList instanceof File) {
+		filesList = [filesList];
+	}
 
     // Loop files
     var data = {};
