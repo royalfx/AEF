@@ -9,7 +9,7 @@
 			"program": "${workspaceFolder}/build/build.jsx",
 			"type": "extendscript-debug",
 			"request": "launch",
-			"targetSpecifier": "aftereffects-18.0",
+			"targetSpecifier": "aftereffects-23.0",
 			"stopOnEntry": false,
 			"trace": true
 		},
@@ -17,7 +17,7 @@
 			"name": "After Effects - Current File",
 			"type": "extendscript-debug",
 			"request": "launch",
-			"targetSpecifier": "aftereffects-18.0",
+			"targetSpecifier": "aftereffects-23.0",
 			"program": "${file}",
 			"stopOnEntry": false,
 			"trace": false

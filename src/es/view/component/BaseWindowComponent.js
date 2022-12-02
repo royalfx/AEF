@@ -38,17 +38,9 @@ BaseWindowComponent.prototype.initializeComponent = function () {
 	BaseViewComponent.prototype.initializeComponent.call(this);
 	// /*PROFILER*/ProfilerGlobal.step("BaseWindowComponent.initializeComponent call parent");
 
-	var imagesManager = ImagesManager.getInstance();
-	if (imagesManager.isInitialized()) {
-		as_uiCreateFromData(this._uiContainer, this._uiData, imagesManager.getImagesData(), imagesManager.getImagesDir(), /* this.rewriteAppDataFiles */ true);
-	} else {
-		as_uiCreateFromData(this._uiContainer, this._uiData, undefined, undefined, /* this.rewriteAppDataFiles */ true);
-	}
-	// /*PROFILER*/ProfilerGlobal.step("BaseWindowComponent.initializeComponent > as_uiCreateFromData");
-
-	delete this._uiData;
-
 	var _this = this;
+
+	_this.buildUI();
 
 	// onActivate
 	this._uiContainer.onActivate = function () {
@@ -63,6 +55,23 @@ BaseWindowComponent.prototype.initializeComponent = function () {
 	// OVERRIDE
 
 	// /*PROFILER*/ProfilerGlobal.step("BaseWindowComponent.initializeComponent end");
+}
+
+/**
+ * @override
+ */
+BaseWindowComponent.prototype.buildUI = function () {
+	// /*PROFILER*/ProfilerGlobal.step("BaseWindowComponent.initializeComponent start");
+
+	var imagesManager = ImagesManager.getInstance();
+	if (imagesManager.isInitialized()) {
+		as_uiCreateFromData(this._uiContainer, this._uiData, imagesManager.getImagesData(), imagesManager.getImagesDir(), /* this.rewriteAppDataFiles */ true);
+	} else {
+		as_uiCreateFromData(this._uiContainer, this._uiData, undefined, undefined, /* this.rewriteAppDataFiles */ true);
+	}
+	// /*PROFILER*/ProfilerGlobal.step("BaseWindowComponent.initializeComponent > as_uiCreateFromData");
+
+	delete this._uiData;
 }
 
 /**

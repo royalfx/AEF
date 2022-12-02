@@ -6,7 +6,7 @@
 		#include "../lib/eslib_ae_1.0.0.jsxinc";
 
 		// Version
-		var es_version = "1.0.1";
+		var es_version = "1.0.2";
 		var js_version = "1.0.0";
 
 		// Directories

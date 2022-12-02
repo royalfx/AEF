@@ -35,12 +35,6 @@ OSProxy.prototype.getAssetsDirectory = function () {
 
 /**
  * @protected
- * @type {File}
- */
-OSProxy.prototype._latestSelectedFile = null;
-
-/**
- * @protected
  * @type {string}
  */
 OSProxy.prototype._scriptFolderName = null;

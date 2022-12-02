@@ -1600,7 +1600,6 @@ OSProxy.prototype.constructor = OSProxy;
 OSProxy.prototype.getAssetsDirectory = function () {
 	return as_getTempFolder(this._scriptFolderName, this._versionFolderName);
 }
-OSProxy.prototype._latestSelectedFile = null;
 OSProxy.prototype._scriptFolderName = null;
 OSProxy.prototype._versionFolderName = null;
 
@@ -1793,6 +1792,16 @@ BaseWindowComponent.prototype.setEnabled = function (enabled) {
 }
 BaseWindowComponent.prototype.initializeComponent = function () {
 	BaseViewComponent.prototype.initializeComponent.call(this);
+	var _this = this;
+	_this.buildUI();
+	this._uiContainer.onActivate = function () {
+		_this._isWinActive = true;
+	}
+	this._uiContainer.onDeactivate = function () {
+		_this._isWinActive = false;
+	}
+}
+BaseWindowComponent.prototype.buildUI = function () {
 	var imagesManager = ImagesManager.getInstance();
 	if (imagesManager.isInitialized()) {
 		as_uiCreateFromData(this._uiContainer, this._uiData, imagesManager.getImagesData(), imagesManager.getImagesDir(),  true);
@@ -1800,13 +1809,6 @@ BaseWindowComponent.prototype.initializeComponent = function () {
 		as_uiCreateFromData(this._uiContainer, this._uiData, undefined, undefined,  true);
 	}
 	delete this._uiData;
-	var _this = this;
-	this._uiContainer.onActivate = function () {
-		_this._isWinActive = true;
-	}
-	this._uiContainer.onDeactivate = function () {
-		_this._isWinActive = false;
-	}
 }
 BaseWindowComponent.prototype.showWindow = function() {
 	if (this._isPanel) {

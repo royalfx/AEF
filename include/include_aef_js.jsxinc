@@ -1,5 +1,5 @@
-document.write('<script type="text/javascript" src="D:/Dropbox/Library/ExtendScript/scripts/AEF/lib/puremvc-1.0.1.js"></script>');
-document.write('<script type="text/javascript" src="D:/Dropbox/Library/ExtendScript/scripts/AEF/src/js/debug/LoggerJS.js"></script>');
-document.write('<script type="text/javascript" src="D:/Dropbox/Library/ExtendScript/scripts/AEF/src/js/model/proxy/BaseESProxy.js"></script>');
-document.write('<script type="text/javascript" src="D:/Dropbox/Library/ExtendScript/scripts/AEF/src/js/view/component/BaseViewComponentJS.js"></script>');
-document.write('<script type="text/javascript" src="D:/Dropbox/Library/ExtendScript/scripts/AEF/src/js/view/mediator/BaseMediatorJS.js"></script>');
+document.write('<script type="text/javascript" src="D:/Dropbox/Projects/Tools and Scripts/AEF/lib/puremvc-1.0.1.js"></script>');
+document.write('<script type="text/javascript" src="D:/Dropbox/Projects/Tools and Scripts/AEF/src/js/debug/LoggerJS.js"></script>');
+document.write('<script type="text/javascript" src="D:/Dropbox/Projects/Tools and Scripts/AEF/src/js/model/proxy/BaseESProxy.js"></script>');
+document.write('<script type="text/javascript" src="D:/Dropbox/Projects/Tools and Scripts/AEF/src/js/view/component/BaseViewComponentJS.js"></script>');
+document.write('<script type="text/javascript" src="D:/Dropbox/Projects/Tools and Scripts/AEF/src/js/view/mediator/BaseMediatorJS.js"></script>');
